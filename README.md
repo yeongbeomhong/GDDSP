@@ -1,4 +1,4 @@
-# This Instruction contains the Goal and the Functions of code-scripts in this folder.
+# Goal and the Function of GDDSP
 
 
 # GOAL
@@ -27,17 +27,6 @@ This is why Model contains six harmonic oscillators, which can generate at most 
 
 
 
-
-# Steps for Implementation of GDDSP
-1. Copy Auto-Encoder Structure of DDSP, which is implemented with pytorch (https://github.com/sweetcocoa/ddsp-pytorch)
-
-2. Replace the Monophonic Pitch Encoder(CREPE) with Polyphonic Pitch Encoder (Lightweight Inst-agnostic Pitch Estimator). 
-Paper Link : https://arxiv.org/abs/2203.09893  Code Link : https://github.com/spotify/basic-pitch
-
-3. 
-
-
-
 # Steps for Training
 - There Must be "Multi-Stage Loss and Backpropation"
 - Multi-Stage Lss means that there is at least one intermediate layer of which output will be compared with GT audio.
@@ -58,7 +47,4 @@ while the FX layers are leaded to capture "Effects(distortion,delay,reverb)" to 
 
 - Clean Dataset : Guitarset hexaphonic recordings _ debleeded  (https://zenodo.org/record/3371780)
 - Wet Dataset : each sample from Clean Dataset + FX with Randomized Parameters
-
 - Loss  :  Muiti-scale spectral loss between input and recon. (The mathematical formula of loss can be found in original DDSP paper).
-
-2. Fix the 

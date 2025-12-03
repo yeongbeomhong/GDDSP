@@ -1,0 +1,6 @@
+basic_pitch==0.2.6
+numpy==1.23.5
+tensorflow==2.13.0
+torch==1.10.0+cu111
+torchaudio==0.10.0+cu111
+train==0.0.5

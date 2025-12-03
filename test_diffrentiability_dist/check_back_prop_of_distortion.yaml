@@ -1,0 +1,132 @@
+# 1. Config of the directory of logs and the checkpoint.
+experiment_name: Check_Distortion_Internal_Instance #Input audio and Reconstructed audio's sound pressure range all fixed into [0,1] and then compared in MSS loss
+check_point_load_path: null 
+# null = "none"boolean of yaml format = train from scratch
+
+check_point_save_path: /home/snu14322/YB_GDDSP_clean/train/checkpoint/
+check_point_save_period : 5
+sample_audio_recon_save_path : /home/snu14322/YB_GDDSP_clean/train/sample_audio_recon/
+sample_audio_recon_save_period : 5
+tensorboard_dir: /home/snu14322/YB_GDDSP_clean/train/tensorboard_log/
+
+# 2. Config of dataset and the time-unit of audio excerpts 
+train_path: /data4/guitarset/audio_hex-pickup_debleeded/train/
+valid_path: /data4/guitarset/audio_hex-pickup_debleeded/valid/
+sample_rate: 22050
+slice_length: 4
+slice_hop: 2
+input_dist_amount_random : false
+# slice_length and slice_hop is used for slicing the long_audio data(>10sec) into input_excerpt with fixed length.
+# slice_length and hop is not for encoder, decoder, oscillators, and noise generator.
+# slice_length and hop is used for pre-processing of data during construction of dataloader
+# encoder, decoder, oscillators, noise generator, FX chain have their own operating frame_length and hop. ( they do not use slice_hop and slice_length)
+
+# 3. Config of Training Units and the Schedule
+max_epoch : 1000
+seed: 10
+batch_size: 16 #default = 64
+optimizer: radam
+num_workers: 0
+epoch_toggle_loss : 200 # This value only affects the GDDSP_train_loss1_then_loss2.py
+# Only Loss between Input_dry(=GT_dry) and Recon_dry will penalize the model Until epoch_toggle_loss
+# After then, Loss between Input_Wet(=GT_wet) and Recon_wet will peanalize the model.
+# This Training Method assumes that FX Chain can properly infer distorted audio only if the Recon_Dry is sufficiently similar to Input_dry.
+
+lr: 0.002
+lr_decay: 0.95     # The decreasing ratio of lr (= gamma)
+lr_decay_period : 10 # lr decreases by every 10 epochs.
+lr_min: 1.0e-07
+lr_scheduler: multi
+#validation_interval: 1000
+#valid_waveform_sec: 12
+
+# 4. Configuration about Encoder.
+frame_resolution: 0.004 
+# int(sr * frame_resolution) = num of sample points in one time frame = windowing hop when you slice full training/valid audio into frames
+# default value of developer = 0.004
+# default num of sample points of one audio data = 88200 = 22050/sec * 4sec
+# => default sample points in one frame = int(22050 * 0.004) = 88
+# default num of frames for one audio data = int(88200/88) = 1002
+# Generally, n_fft > points in one frame = sr*frame_resolution
+# It means fft uses nearby points of target frame as well as points in frame , to pad length of frame up to n_fft.
+
+
+
+enc_pitch:
+    ## Option1 (Use https://arxiv.org/abs/2203.09893)
+    structure : light_basic_pitch
+    checkpoint : ICASSP_2022_MODEL_PATH
+    threshold_top_six : true # if true -> Leave only the top 6 pitches(=pitches have highest confidences) per each time frame. 
+    weight_sum_for_top_six : true 
+    # Don't confirm the top 6 pitches as the "true pitches" in that frame.
+    # Instead, Find the true-f0 center around each top pitch.
+    # ex> The confidence list : [390Hz:0.3 400Hz: 0.9 410Hz : 0.3, 690Hz:0.3, 700Hz:0.9, 710Hz:0.3]
+    # Imagine that you wanna detect the Two pitches/
+    # Then 400Hz and 700Hz are Pitch-Candidates in this frame,  due to their high confidences.
+    # However it is not guaranteed that those pitches with high confidences exactly match the true pitches in audio
+    # Maybe the true pitch is 401 or 399Hz, and the Spectral Energy of it spans on  390Hz, 400Hz, and 410Hz
+    # So Get the weighted-Average of All Local bins around 400Hz (390,400,410), and declare it as first true pitch
+    # Then Repeat this process for 700Hz, and declare it as second true pitch of that frame.
+    # (Summary) To Find Accurate Pitch, Use not only {f0, confidence} of six pitches with toppest confidences, but Use also {f0, confidence} of "neighbor bins" around six pitches.
+    confidence_thres : 1.2
+    # Even if some pitch bin has specially high confidence and is regarded as center of true pitch,
+    # It can still indicate "silence"
+    # Becuase the top-six highest pitch confidences are only "relatively(orderly)" high, still not "definitely" high.
+    # So If the local sum of confidences around true pitch candidate is lower than threshold,
+    # Dont get true-weighted average of f0, just regard it as silence.(silence = zero change in phase = 0 Hz f0)
+    # ex> confidence of each freq bin : [390Hz:0.01 400Hz: 0.35 410Hz : 0.01,   690Hz:0.3, 700Hz:0.95, 710Hz:0.3]
+    # -> Local Weighted Average of f0 around 700Hz => determined as true pitch
+    #  Local Weighted Average of f0 around 400Hz => determined as silence (as the sum of confidences of 390,400,410 = only 0.37 << thres)
+    nearby_pitch_grouping : true
+    # Gather each highest f0 value from six highest-confidence f0s, and group them along frame-axis as one tensor seq.
+    # Repeat this process to second highest, third highest ... lowest.
+    # And Feed each f0 seq to first oscillator, second oscillator, ... , sixth oscillator.
+
+
+use_z : true # Use Z_encoder and Timbre Embedding.
+z_units: 16 # Size of one Z_vector of one frame of one audio.
+n_fft: 2048 #config for z_encoder
+n_mels: 128 #config for z_encoder
+n_mfcc: 30 #config for z_encoder
+
+enc_loud:
+    structure : A_weight_rule_based
+
+# 5. Configuration aboud Decoder # (Decoder Produces change-able knob values for oscillators, Noise Generator, and FX Chain)
+bidirectional: false
+gpu: 0
+gru_units: 512
+mlp_layers: 3 #depth of MLP to convert f0, loud, z into latent vectors useful for producing a,c,H,dist_eq,dist_ctanh,room_acoustic. 
+mlp_units: 512
+# relative amplitude of harmonics(c), amplitude of fundamental sinusoid(a), Noise Filter Transfer Function Convolution Coeffieicent(H) are produced by cascaded nets of GRU-MLP
+# Transfer Function of pre-EQ of Distortion(dist_pre), coefficients of power-tanh series of Distortion(dist_ctanh) are also produced by other cascaded nets of GRU-MLP.
+
+
+
+
+# 6. Configuration of Rule-based Clean Synthesizer Modules (Harmonic Oscillator and Noise Generator) #
+n_freq: 65 # num of freq bins of Noise Filter Function producing aperiodic components of audio
+n_harmonics: 101 # Num of vertical harmonics representing one periodic wav in one frame. Harmonic Oscillator uses this config value.
+
+# 7. Configuration about FX Moudules in GDDSP Network, which are connected after the Dry signal reconstruction Modules(= Harmonic Oscillator and Noise Generator)
+use_dist: true
+use_room_acoustic: false
+distortion:
+    time_varying : false 
+    # if true ->  get Time-Varying Distortion coefficients(eq, ctnah) along frames for each audio audio. w/ shape (Batch, frames, n_tanh+n_eq_band) 
+    # if false -> get global distortion for each audio excerpt. w/ shape (Batch, n_tanh + n_eq_band)
+    n_tanh : 20 # Produces 20 adjustable coefficients of power_tanh series to reproduce non-linear distortion effect of target frame of target audio.
+    use_pre_eq : true
+    n_fft : 441 # n_fft is used to get Fourier Transform of clean audio before undergoing distortion_pre_eq, and also used for zero-padding pre_EQ of Distortion  
+    n_eq_band : 65 # Specify the number of various Center_f0 in pre_EQ.
+    # Interval between center_f0 of neighboring freq bins = sr/n_fft = (default)22050/441 = 50Hz
+    # So, 65 bins represent Bandpass convolution centerted at 0, 50 , 100, ... 3200Hz  
+room_acoustic: null # Setting for layer of Combination of Reverb And Delay ( They cannot be splitted by therir nature. delay and reverb both can be realized by Convlution with Linear Finite Impulse Response)
+
+
+#8. Training Loss and Validation Metric #
+loss: mss #mss = multi-spectral loss used in Original DDSP peper.
+metric: mss
+
+### Etc (still tidying up..) ###
+resume: false

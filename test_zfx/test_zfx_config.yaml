@@ -1,0 +1,97 @@
+# 1. Config of the directory of logs and the checkpoint.
+experiment_name: Use_ZFX_to_GainColour_Estimation_NoReLu_
+test_zfx : true
+recon_dist_without_fx_chain : false
+check_point_load_path: /home/snu14322/YB_GDDSP_clean/train/checkpoint/GDDSP_Batch32_ExcerptHop2_f0Thres0.5_nHarmonics30_joint/joint_loss_epoch10.pt
+check_point_estimator_path: /home/snu14322/YB_GDDSP_clean/test_zfx/checkpoint/
+check_point_save_period : 10
+valid_knob_example_path : /home/snu14322/YB_GDDSP_clean/test_zfx/valid_knob_example/
+valid_period : 5
+
+# 2. Config of guitarset dataset and the time-unit of audio excerpts 
+train_path: /data4/guitarset/audio_hex-pickup_debleeded/train/
+valid_path: /data4/guitarset/audio_hex-pickup_debleeded/valid/
+sample_rate: 22050
+slice_length: 4
+slice_hop: 2
+input_dist_amount_random : true
+input_dist_type : torch_overdrive
+
+# 3. Config of Training Units and the Schedule
+max_epoch : 500
+seed: 10
+batch_size: 32
+optimizer: radam
+num_workers: 0
+
+lr: 0.001 #default =0.002
+lr_decay: 0.95     # The decreasing ratio of lr (= gamma)
+lr_decay_period : 10 # lr decreases by every 10 epochs.
+lr_min: 1.0e-07
+lr_scheduler: multi
+
+# 4. Configuration about Encoder of GDDSP
+frame_resolution: 0.01 #default = 0.01
+fx_frame_resolution : 0.1
+
+enc_pitch:
+  ## Option1 (Use https://arxiv.org/abs/2203.09893)
+  structure : light_basic_pitch
+  checkpoint : ICASSP_2022_MODEL_PATH
+  threshold_top_six : true # if true -> Leave only the top 6 pitches(=pitches have highest confidences) per each time frame. 
+  weight_sum_for_top_six : true 
+  confidence_thres : 1.0 #default 1.2 #high 1.5 #Low 0.3
+  nearby_pitch_grouping : true
+
+use_z : true # Use Z_encoder and Timbre Embedding. #If you Set this False, z_enc and zfx_enc will be disabled.
+z_units: 16 # Size of one Z_vector of one frame of one audio.
+n_fft: 2048 #config for z_encoder
+n_mels: 128 #config for z_encoder
+n_mfcc: 30 #config for z_encoder
+
+zfx_units : 32 # Size of one ZFX_vector of one frame of one audio.
+fx_n_fft : 4096 #config for zfx_encoder
+fx_n_mels : 256  #config for zfx_encoder
+fx_n_mfcc : 30   #config for zfx_encoder
+
+enc_loud:
+  structure : A_weight_rule_based
+
+# 5.  Configuration about Decoder of GDDSP# (Decoder Produces knob values for oscillators, Noise Generator, and FX Chain)
+bidirectional: false
+gru_units: 512
+mlp_layers: 3 # depth of MLP to convert f0, loud, z into latent vectors useful for producing a,c,H,dist_eq,dist_ctanh,room_acoustic. 
+mlp_units: 512 # output dimension of MLP per One encoded input fed into MLP
+
+# 6. Configuration of Rule-based Clean Synthesizer Modules (Harmonic Oscillator and Noise Generator) #
+n_freq: 40 # num of freq bins of Noise Filter Function producing aperiodic components of audio
+n_harmonics: 30 #default = 101 for None-FX layer-GDDSP.  default=30 for FX_including_GDDSP
+
+# 7. Configuration about FX Moudules in GDDSP Network, which are connected after the Dry signal reconstruction Modules(= Harmonic Oscillator and Noise Generator)
+use_dist: true
+use_room_acoustic: false
+distortion:
+  time_varying : false
+  # if true ->  get Time-Varying Distortion coefficients(eq, ctnah) along frames for each audio audio. w/ shape (Batch, frames, n_tanh+n_eq_band) 
+  # if false -> get global distortion for each audio excerpt. w/ shape (Batch, n_tanh + n_eq_band)
+  n_tanh : 6 # Produces 20 adjustable coefficients of power_tanh series to reproduce non-linear distortion effect of target frame of target audio.
+  formula : power
+  use_pre_eq : true
+  n_fft : 441 # n_fft is used to get Fourier Transform of clean audio before undergoing distortion_pre_eq, and also used for zero-padding pre_EQ of Distortion  
+  n_eq_band : 40 #default = 65 # Specify the number of various Center_f0 in pre_EQ.
+  # Interval between center_f0 of neighboring freq bins = sr/n_fft = (default)22050/441 = 50Hz
+  # So, 65 bins represent Bandpass convolution centerted at 50Hz, 100Hz, ... 40*50Hz
+room_acoustic: null # Setting for layer of Combination of Reverb And Delay ( They cannot be splitted by therir nature. delay and reverb both can be realized by Convlution with Linear Finite Impulse Response)
+
+# 8. Training Loss and Validation Metric of GDDSP#
+loss: mss #mss = multi-spectral loss used in Original DDSP peper.
+metric: mss
+
+# 9. Training Loss, Valid Metric, Structure of "Distortion Magnitude Estimator"(In : zfx from GDDSP,  Out: Gain, Colour knob) #
+estimator:
+  train_loss : mse
+  valid_two_metric : true
+  valid_metric_1 : mse
+  valid_metric_2 : accuracy # count_valid_data(with Gain_error<1 && Colour_error<1 )  / total_count_valid data
+  mlp_layers: 3 # Depth of MLP to convert f0, loud, z into latent vectors useful for producing a,c,H,dist_eq,dist_ctanh,room_acoustic. 
+  mlp_units: 2 # Length of final layer output of MLP is 2. [gain, colour]

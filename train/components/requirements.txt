@@ -1,0 +1,11 @@
+dataset==1.6.2
+librosa==0.10.1
+mir_eval==0.7
+numpy==1.21.2
+pretty_midi==0.2.10
+resampy==0.4.2
+scipy==1.7.3
+tensorflow==2.11.0
+torch==1.10.0+cu111
+torchaudio==0.10.0+cu111
+pedalboard

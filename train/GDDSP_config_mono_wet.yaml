@@ -1,0 +1,119 @@
+# 1. Config of the directory of logs and the checkpoint.
+experiment_name: GDDSP_
+recon_dist_without_fx_chain : false #If true : recon dist audio without Wienner-Hammerstein Dist layer. Only Use Oscillator+Noise Gen(+Optionally Reverb)
+
+train_check_point_load_path : null
+# null = "none" boolean of yaml format = train from scratch
+# not null -> load pretrained model for test phase or continuing more training.
+
+test_pretrained_model : false
+test_check_point_load_path: /
+
+# AR(C) and RE(D) option. AR true -> experiment name will be AR1 on wandb. AR false -> AR2
+input_dist_amount_random : false
+use_room_acoustic: false
+input_dist_amount_fixed : 20 # This value is only used when input_dist_amount_random == False
+zfx_mlp_unit_is_half_of_other_mlps : true
+
+check_point_save_path: /home/snu14322/YB_GDDSP_clean/train/checkpoint/q
+check_point_save_period : 5
+sample_audio_recon_save_path : /home/snu14322/YB_GDDSP_clean/train/sample_audio_recon/
+sample_audio_recon_save_period : 5
+tensorboard_dir: /home/snu14322/YB_GDDSP_clean/train/tensorboard_log/
+
+# 2. Config of dataset and the time-unit of audio excerpts
+train_path: /data4/guitarset/audio_hex-pickup_debleeded/train/ #train dataset raw audio dir
+valid_path: /data4/guitarset/audio_hex-pickup_debleeded/valid/ #valid dataset raw audio dir
+valid_period : 5
+sample_rate: 22050
+slice_length: 4
+slice_hop: 2
+input_dist_type : torch_overdrive ##options : torch_overdrive / spotify_pedalboard / idmt_od1 / idmt_sd1
+# GDDSP Does not know the input_type. But it will tune internal W_H Distortion(tanh Distortion) similar to Input Dist type during Self-Supervised Train.
+
+# 3. Config of Training Units and the Schedule
+max_epoch : 200
+seed: 10
+batch_size: 36 #must be integer multiplication of six
+optimizer: radam
+num_workers: 0
+epoch_toggle_loss : 100 # This value only affects the GDDSP_train_loss1_then_loss2.py
+# Only Loss between Input_dry(=GT_dry) and Recon_dry will penalize the model Until epoch_toggle_loss
+# After then, Loss between Input_Wet(=GT_wet) and Recon_wet will peanalize the model.
+# This Training Method assumes that FX Chain can properly infer distorted audio only if the Recon_Dry is sufficiently similar to Input_dry.
+
+lr: 0.001 #default =0.002
+lr_decay: 0.95     # The decreasing ratio of lr (= gamma)
+lr_decay_period : 10 # lr decreases by every 10 epochs.
+lr_min: 1.0e-07
+lr_scheduler: multi
+#validation_interval: 1000
+#valid_waveform_sec: 12
+
+# 4. Configuration about Encoder.
+frame_resolution: 0.004 # defalut 0.004(88-points advancement per frame)
+#int(sr*fr_reso) = sample points in one frame = Num of samle_point used to produce "one frame" of z,loud,pitch enc. 
+fx_frame_resolution : 0.1 # one frame represents 1sec in audio. (each frame has plenty of sample points, to capture time-invariant property like distortion)
+
+
+enc_pitch:
+    ## Option1 (Use https://arxiv.org/abs/2203.09893)
+    structure : light_basic_pitch
+    checkpoint : ICASSP_2022_MODEL_PATH # Use Spotify pitch encoder as same as Polyphonic GDDSP. But for Mono DDSP, Pick One Pitch candidate with top confidence
+    confidence_thres : 1.0 #default 1.2 #high 1.5 #Low 0.3
+    confidence_to_decoder : true
+    nearby_pitch_grouping : true
+
+use_z : true # Use Z_encoder and Timbre Embedding.
+z_units: 16 # Size of one Z_vector of one frame of one audio.. default 16
+n_fft: 2048 #config for z_encoder default= 2048
+n_mels: 128 #config for z_encoder. default =128
+n_mfcc: 30 #config for z_encoder. default = 30
+
+zfx_units : 16 # Size of one ZFX_vector of one frame of one audio.. default 32
+fx_n_fft : 4096 #config for zfx_encoder. Longer than n_fft of z, as frame length to encode zfx is lonher than z, while n_fft must ne longer than frame length(hop)
+fx_n_mels : 256  #config for zfx_encoder
+fx_n_mfcc : 30   #config for zfx_encoder
+
+enc_loud:
+    structure : A_weight_rule_based
+
+# 5. Configuration aboud Decoder # (Decoder Produces change-able knob values for oscillators, Noise Generator, and FX Chain)
+bidirectional: false
+gru_units: 64 #same with mlp_units # default 512 in original SeonghoLee's DDSP torch
+mlp_layers: 3 #depth of MLP to convert f0, loud, z into latent vectors useful for producing a,c,H,dist_eq,dist_ctanh,room_acoustic. 
+mlp_units: 64
+# relative amplitude of harmonics(c), amplitude of fundamental sinusoid(a), Noise Filter Transfer Function Convolution Coeffieicent(H) are produced by cascaded nets of GRU-MLP
+# Transfer Function of pre-EQ of Distortion(dist_pre), coefficients of power-tanh series of Distortion(dist_ctanh) are also produced by other cascaded nets of GRU-MLP.
+
+# 6. Configuration of Rule-based Clean Synthesizer Modules (Harmonic Oscillator and Noise Generator) #
+n_freq: 40 # num of freq bins of Noise Filter Function producing aperiodic components of audio
+n_harmonics: 141 #default = 101 # Num of vertical harmonics representing one periodic wav in one frame. Harmonic Oscillator uses this config value.
+
+# 7. Configuration about FX Moudules in GDDSP Network, which are connected after the Dry signal reconstruction Modules(= Harmonic Oscillator and Noise Generator)
+use_dist: true
+distortion:
+    time_varying : false
+    # if true ->  get Time-Varying Distortion coefficients(eq, ctnah) along frames for each audio audio. w/ shape (Batch, frames, n_tanh+n_eq_band) 
+    # if false -> get global distortion for each audio excerpt. w/ shape (Batch, n_tanh + n_eq_band)
+    n_tanh : 5 # Produces 20 adjustable coefficients of power_tanh series to reproduce non-linear distortion effect of target frame of target audio.
+    formula : power
+    ctanh_sigmoid : true 
+    # Use ctanh_sigmoid -> Apply 2*sigmoid(ctanh) or 5*sigmoid(ctanh) at last layer of Decoder. -> Range becomes 0~2 or 0~5 
+    # By Using Sigmoid, Tanh Formula can conserve positive-number property of audio signal, and "Amplifying property" of Distortion. 
+    # Order ctanh_decoder_layer to infer "one more knob value" , and use that knob as "Amplifying Gain for all sample points"
+    # formula : power -> Distorted(y) = c0y + c1tanh(y^1) + c2tanh(y^2) + ... cn-1 tanh(y^n-1)
+    # formula : sum -> Distorted(y) = c0y + c1anh(1y) + ... cn-1 tanh(n-1 * y)
+    # formula : sum_w_offset -> Distorted(y) = c0y + c1 tanh(y + cn-1) + c2 tanh(2y + cn-1) + ... cn-2 ((n-2)y + cn-1) # Regard c_(n-1) as offeset
+    use_pre_eq : true
+    n_fft : 441 # n_fft is used to get Fourier Transform of clean audio before undergoing distortion_pre_eq, and also used for zero-padding pre_EQ of Distortion  
+    n_eq_band : 40 #default = 65 # Specify the number of various Center_f0 in pre_EQ.
+    # Interval between center_f0 of neighboring freq bins = sr/n_fft = (default)22050/441 = 50Hz
+    # So, 65 bins represent Bandpass convolution centerted at 50Hz, 100Hz, ... 40*50Hz
+
+room_acoustic: # Setting for layer of Combination of Reverb And Delay ( They cannot be splitted by therir nature. delay and reverb both can be realized by Convlution with Linear Finite Impulse Response)
+    reverb_sec : 1
+
+#8. Training Loss and Validation Metric #
+loss: mss #mss = multi-spectral loss used in Original DDSP peper.
+metric: mss

@@ -1,0 +1,20 @@
+backtrace==0.2.1
+jams==0.3.4
+librosa==0.10.1
+mir_eval==0.7
+numpy==1.21.2
+omegaconf==2.3.0
+pandas==2.1.3
+pretty_midi==0.2.10
+resampy==0.4.2
+scipy==1.7.3
+soundfile==0.12.1
+tensorboardX==2.6.2.2
+tensorflow==2.13
+torch==1.10.0+cu111
+torchaudio==0.10.0+cu111
+tqdm==4.61.2
+
+# install torch related libraries with command below
+# pip install torch==1.10.0+cu111 torchvision==0.11.1+cu111 torchaudio==0.10.0+cu111 -f https://download.pytorch.org/whl/cu111/torch_stable.html
+# If there is error in scripts using librosa and numpy, use command [pip install --upgrade librosa numpy]

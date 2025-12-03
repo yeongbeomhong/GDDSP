@@ -1,8 +1,18 @@
+# Author and Description
+
+**Author:** Yeong Hong  
+**Link:** [www.linkedin.com/ybhong/](https://www.linkedin.com/ybhong/)  
+
+This code is based on DDSP (ICLR 2020) and implements Hexaphonic DDSP, specifically targeting guitar recordings (.wav).  
+Its main goal is to separately extract **clean timbre vectors** and **Distortion Variables** (coefficients of Tanh-clipping series) from the input audio.
+
+---
+
 # Goal and the Function of GDDSP
 
 
 # GOAL
-Developing the Polyphonic-DDSP which can disentangle pitch-sequences, loudness-sequences, timbres, FX-parameters in Reference Auido recorded  by guitars.
+Developing the Polyphonic-DDSP which can disentangle pitch-sequences, loudness-sequences, timbres, FX-parameters in Reference Audio recorded  by guitars.
 
 # Model Features
 1. The Model is DDSP-Like Model which can analyze/copy the audio components of reference audio. 
